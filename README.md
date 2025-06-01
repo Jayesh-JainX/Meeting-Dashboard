@@ -28,6 +28,11 @@ This project is a full-stack application designed to manage meetings, featuring 
 └── README.md              # This file (Overall project README)
 ```
 
+## Screenshots
+
+![Screenshot 1](./images/1.png)
+![Screenshot 2](./images/2.png)
+
 ## Prerequisites
 
 - Node.js (v18 or later recommended)
