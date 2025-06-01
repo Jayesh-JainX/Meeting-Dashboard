@@ -1,0 +1,1 @@
+# This file makes the 'meetings_project' directory a Python package.
