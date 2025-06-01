@@ -10,23 +10,38 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
+import os
 from pathlib import Path
+import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env file for development (optional, Railway uses its own env var system)
+# from dotenv import load_dotenv
+# load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-your-secret-key-here' # Replace with a real secret key
+# For production, set this in your environment variables (e.g., on Railway).
+# Generate a new key using: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-fallback-dev-key-CHANGE-ME')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# For production, set DEBUG = False via an environment variable.
+DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True' # Defaults to True for dev if not set
 
-ALLOWED_HOSTS = ['*'] # For development, allow all hosts. Narrow this down for production.
-
+# ALLOWED_HOSTS
+# For production, set this in your environment variables on Railway.
+# Example: your-app-name.up.railway.app,yourcustomdomain.com
+ALLOWED_HOSTS_ENV = os.environ.get('DJANGO_ALLOWED_HOSTS')
+if ALLOWED_HOSTS_ENV:
+    ALLOWED_HOSTS = ALLOWED_HOSTS_ENV.split(',')
+else:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1'] # Default for local development
 
 # Application definition
 
@@ -44,8 +59,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware', # CORS middleware
-    'django.middleware.security.SecurityMiddleware',
+    'django.middleware.security.SecurityMiddleware', # Should be high up
+    'whitenoise.middleware.WhiteNoiseMiddleware',    # Whitenoise for static files
+    'corsheaders.middleware.CorsMiddleware',         # CORS middleware
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -79,10 +95,12 @@ WSGI_APPLICATION = 'meetings_project.wsgi.application'
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': dj_database_url.config(
+        # Fallback to SQLite for local development if DATABASE_URL is not set
+        default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}",
+        conn_max_age=600,      # Recommended for persistent connections
+        conn_health_checks=True # Recommended for Railway
+    )
 }
 
 
@@ -121,6 +139,10 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
 STATIC_URL = 'static/'
+# For production with Whitenoise:
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
@@ -138,32 +160,40 @@ REST_FRAMEWORK = {
     ]
 }
 
-# CORS settings - Allow all origins for development
-CORS_ALLOW_ALL_ORIGINS = True
-CORS_ALLOW_CREDENTIALS = True # Allow cookies to be sent
-# Or, for more specific control in production:
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:3000", # Example: your React frontend
-#     "http://127.0.0.1:3000",
-# ]
+# CORS settings
+# For development, allowing all origins is fine. For production, specify origins.
+CORS_ALLOW_CREDENTIALS = True # Important for session-based auth with frontend on different domain/port
 
-# If you use CSRF protection with session authentication and your frontend is on a different domain/port
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-]
-# Ensure your frontend sends the CSRF token if needed. For APIs, often SessionAuthentication
-# is used for the browsable API and TokenAuthentication (or JWT) for programmatic access.
-# For simplicity with a React frontend, SessionAuthentication with proper CORS and CSRF handling (if forms are submitted directly)
-# or just ensuring API calls are stateless (e.g. using Authorization header with tokens) is common.
-# Since we are using SessionAuthentication for login, ensure frontend handles cookies.
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+    CSRF_TRUSTED_ORIGINS = [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:5173', # Vite default if not 3000
+        'http://127.0.0.1:5173',
+    ]
+else:
+    # For production, get these from environment variables
+    CORS_ALLOWED_ORIGINS_ENV = os.environ.get('DJANGO_CORS_ALLOWED_ORIGINS')
+    if CORS_ALLOWED_ORIGINS_ENV:
+        CORS_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS_ENV.split(',')
+    else:
+        CORS_ALLOWED_ORIGINS = [] # Should be set in production
 
-# For session-based login to work across different ports (e.g., Django on 8000, React on 3000)
-# during development, you might need:
-SESSION_COOKIE_SAMESITE = 'Lax'
-CSRF_COOKIE_SAMESITE = 'Lax' # Use 'None' if you have issues and are on HTTPS for both. 'Lax' is safer.
-SESSION_COOKIE_SECURE = False # True if HTTPS
-CSRF_COOKIE_SECURE = False    # True if HTTPS
+    CSRF_TRUSTED_ORIGINS_ENV = os.environ.get('DJANGO_CSRF_TRUSTED_ORIGINS')
+    if CSRF_TRUSTED_ORIGINS_ENV:
+        CSRF_TRUSTED_ORIGINS = CSRF_TRUSTED_ORIGINS_ENV.split(',')
+    else:
+        CSRF_TRUSTED_ORIGINS = [] # Should be set in production (e.g., your frontend's domain)
+
+
+# Cookie settings for cross-site requests (important if frontend and backend are on different domains/ports)
+# In production with HTTPS, these should ideally be 'None' for SameSite and True for Secure.
+# For local HTTP development, 'Lax' and False are usually necessary.
+SESSION_COOKIE_SAMESITE = 'Lax' if DEBUG else os.environ.get('DJANGO_SESSION_COOKIE_SAMESITE', 'None')
+CSRF_COOKIE_SAMESITE = 'Lax' if DEBUG else os.environ.get('DJANGO_CSRF_COOKIE_SAMESITE', 'None')
+SESSION_COOKIE_SECURE = not DEBUG # True if not DEBUG (i.e., in production with HTTPS)
+CSRF_COOKIE_SECURE = not DEBUG    # True if not DEBUG
 
 # If using `rest_framework.authtoken`
 # AUTH_USER_MODEL = 'auth.User' # Default, but good to be explicit if you ever change it.

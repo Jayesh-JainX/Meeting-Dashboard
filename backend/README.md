@@ -26,33 +26,49 @@ This directory contains the Django REST Framework backend for the Meetings appli
     source venv/bin/activate
     ```
 
-3.  **Install dependencies:**
-    Make sure you have a `requirements.txt` file (we will create this later, for now, you'd manually install Django and djangorestframework).
+3.  **Install dependencies from `requirements.txt`:**
+    The `backend/meetings_project/requirements.txt` file lists all necessary Python packages.
 
     ```bash
-    pip install Django djangorestframework django-cors-headers gunicorn dj-database-url psycopg2-binary whitenoise
-    # (Note: djangorestframework-simplejwt is if you choose JWT, we've set up session auth for now)
-    # psycopg2-binary is for PostgreSQL, common on Railway. dj-database-url helps parse DATABASE_URL.
-    # gunicorn is the WSGI server. whitenoise is for serving static files.
+    pip install -r requirements.txt
     ```
 
-    **Important:** Create a `requirements.txt` file in the `backend/meetings_project` directory:
+    This file includes:
+
+    - `Django`
+    - `djangorestframework`
+    - `django-cors-headers`
+    - `gunicorn` (for serving the application)
+    - `dj-database-url` (for parsing `DATABASE_URL` from Railway)
+    - `psycopg2-binary` (PostgreSQL adapter, commonly used with Railway databases)
+    - `whitenoise[brotli]` (for serving static files efficiently)
+    - `python-dotenv` (optional, for loading `.env` files in local development)
+
+    If you add or change dependencies, update `requirements.txt`:
 
     ```bash
-    # (After activating virtual env and installing packages)
     pip freeze > requirements.txt
     ```
 
-    Ensure this file is committed to your repository.
+    Ensure this file is always up-to-date and committed to your repository.
 
-4.  **Apply database migrations:**
+4.  **Local Environment Variables (Optional but Recommended for Local Dev):**
+
+    - In the `backend/meetings_project` directory, you can create a `.env` file for local development by copying from `.env.example`:
+      ```bash
+      cp .env.example .env
+      ```
+    - Edit the `.env` file to set your local `DJANGO_SECRET_KEY` and other development-specific variables if needed. **DO NOT commit your actual `.env` file.**
+    - The `settings.py` is configured to optionally load variables from `.env` if `python-dotenv` is installed and you uncomment the relevant lines in `settings.py`.
+
+5.  **Apply database migrations:**
 
     ```bash
     python manage.py makemigrations api
     python manage.py migrate
     ```
 
-5.  **Create a superuser (optional, for accessing Django admin):**
+6.  **Create a superuser (optional, for accessing Django admin):**
 
     ```bash
     python manage.py createsuperuser
@@ -60,7 +76,7 @@ This directory contains the Django REST Framework backend for the Meetings appli
 
     Follow the prompts to create an admin user.
 
-6.  **Run the development server:**
+7.  **Run the development server:**
     ```bash
     python manage.py runserver
     ```
@@ -211,112 +227,35 @@ This Django backend can be deployed to Railway. Follow these steps:
 
 4.  **Configure Django `settings.py` for Production:**
 
-    - Open `backend/meetings_project/meetings_project/settings.py`.
-    - **`SECRET_KEY`**:
-      - Do NOT hardcode your production `SECRET_KEY`. Set it from an environment variable.
-      - ```python
-        import os
-        SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'your-default-development-secret-key')
+    - Open `backend/meetings_project/meetings_project/settings.py`. It has been configured to read these settings from environment variables.
+    - **`DJANGO_SECRET_KEY`**:
+      - **What it is**: Django's `SECRET_KEY` is a large random value used for cryptographic signing, such as for session data, password reset tokens, and CSRF protection tokens. It's crucial that this key is kept secret and is unique to your application.
+      - **Why it's important**: If an attacker gains access to your `SECRET_KEY`, they could potentially forge signed data, leading to serious security vulnerabilities like session hijacking or remote code execution.
+      - **How to generate a strong one**: You can generate a new, strong secret key using Django's built-in utility. Run this in your terminal (with your virtual environment activated):
+        ```bash
+        python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'
         ```
-      ```
-
-      ```
-    - **`DEBUG`**:
-      - Set `DEBUG = False` for production. You can use an environment variable:
-      - ```python
-        DEBUG = os.environ.get('DJANGO_DEBUG', '') != 'False' # Defaults to True if DJANGO_DEBUG is not 'False'
-        ```
-      ````
-      Or more simply for Railway:
-      ```python
-      DEBUG = os.environ.get('DEBUG', 'False') == 'True' # Set DEBUG=True in Railway env vars for debugging if needed
-      ````
-    - **`ALLOWED_HOSTS`**:
-
-      - Railway will provide a domain for your app (e.g., `myproject.up.railway.app`). Add this to `ALLOWED_HOSTS`.
-      - You can get this from an environment variable provided by Railway or set it directly.
-      - ```python
-        ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
-        RAILWAY_STATIC_URL = os.environ.get('RAILWAY_STATIC_URL')
-        if RAILWAY_STATIC_URL:
-            ALLOWED_HOSTS.append(RAILWAY_STATIC_URL.split('//')[1]) # Extract hostname
-        ```
-
-      # For custom domains on Railway:
-
-      # CUSTOM_DOMAIN = os.environ.get('CUSTOM_DOMAIN')
-
-      # if CUSTOM_DOMAIN:
-
-      # ALLOWED_HOSTS.append(CUSTOM_DOMAIN)
-
-      ````
-      A simpler approach for Railway's generated domain:
-      ```python
-      ALLOWED_HOSTS = []
-      RAILWAY_APP_HOSTNAME = os.environ.get('RAILWAY_APP_HOSTNAME') # Railway might set this or similar
-      if RAILWAY_APP_HOSTNAME:
-          ALLOWED_HOSTS.append(RAILWAY_APP_HOSTNAME)
-      # It's often easier to set ALLOWED_HOSTS directly in Railway's environment variables as a comma-separated string
-      # e.g., .up.railway.app,yourcustomdomain.com
-      # Then parse it:
-      # ALLOWED_HOSTS_ENV = os.environ.get('DJANGO_ALLOWED_HOSTS')
-      # if ALLOWED_HOSTS_ENV:
-      #     ALLOWED_HOSTS.extend(ALLOWED_HOSTS_ENV.split(','))
-      ````
-
-      For Railway, it's common to set `ALLOWED_HOSTS = ['*']` initially during setup and then refine it, or use the `.up.railway.app` domain.
-      A safe bet for Railway is to use their provided domain:
-
-      ```python
-      ALLOWED_HOSTS = [os.environ.get('RAILWAY_PUBLIC_DOMAIN', '.up.railway.app')] if 'RAILWAY_PUBLIC_DOMAIN' in os.environ else []
-      # Also add localhost for health checks if needed
-      ALLOWED_HOSTS.append('localhost')
-      ALLOWED_HOSTS.append('127.0.0.1')
-      ```
-
-    - **Database (`DATABASES`)**:
-      - Railway provides a `DATABASE_URL` environment variable for its provisioned databases (e.g., PostgreSQL).
-      - Install `dj-database-url`: `pip install dj-database-url` (should be in `requirements.txt`).
-      - Modify `DATABASES` setting:
-        ```python
-        import dj_database_url
-        DATABASES = {
-            'default': dj_database_url.config(
-                default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}", # Fallback to SQLite for local dev if DATABASE_URL not set
-                conn_max_age=600,
-                conn_health_checks=True,
-            )
-        }
-        ```
+        Copy the output. This is your production `SECRET_KEY`.
+      - **How to use**: In `settings.py`, it's set up as `os.environ.get('DJANGO_SECRET_KEY', 'fallback-dev-key')`. You will set `DJANGO_SECRET_KEY` as an environment variable in Railway with the generated strong key. **Never commit your production `SECRET_KEY` to version control.** The fallback key is only for local development convenience if the environment variable isn't set.
+    - **`DJANGO_DEBUG`**:
+      - In `settings.py`: `DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'`
+      - For production on Railway, set the `DJANGO_DEBUG` environment variable to `False`.
+    - **`DJANGO_ALLOWED_HOSTS`**:
+      - In `settings.py`: Parsed from `os.environ.get('DJANGO_ALLOWED_HOSTS')`.
+      - On Railway, set the `DJANGO_ALLOWED_HOSTS` environment variable to a comma-separated string of your app's domain(s) (e.g., `your-app-name.up.railway.app,www.yourcustomdomain.com`).
+    - **`DATABASE_URL`**:
+      - In `settings.py`: `DATABASES` is configured using `dj_database_url.config()`.
+      - Railway will automatically provide a `DATABASE_URL` environment variable when you provision and link a database service (like PostgreSQL) to your Django application service. No manual setting is usually needed for this specific variable on Railway if you use their database service.
     - **Static Files (Whitenoise)**:
-      - Install `whitenoise`: `pip install whitenoise` (should be in `requirements.txt`).
-      - Add `whitenoise.middleware.WhiteNoiseMiddleware` to your `MIDDLEWARE` list, right after `SecurityMiddleware`:
-        ```python
-        MIDDLEWARE = [
-            'django.middleware.security.SecurityMiddleware',
-            'whitenoise.middleware.WhiteNoiseMiddleware', # Add this
-            # ... other middleware
-        ]
-        ```
-      - Add to `settings.py`:
-        ```python
-        STATIC_ROOT = BASE_DIR / 'staticfiles'
-        STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
-        ```
+      - `settings.py` is configured with `STATIC_ROOT = BASE_DIR / 'staticfiles'` and `STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'`.
+      - `whitenoise.middleware.WhiteNoiseMiddleware` is added to `MIDDLEWARE`.
     - **CSRF & CORS for Production**:
-      - `CSRF_TRUSTED_ORIGINS`: Update this list with your frontend's production URL.
-        ```python
-        CSRF_TRUSTED_ORIGINS = [os.environ.get('FRONTEND_URL', 'http://localhost:3000')]
-        ```
-      - `CORS_ALLOWED_ORIGINS` (if `CORS_ALLOW_ALL_ORIGINS = False` in production):
-        ```python
-        CORS_ALLOWED_ORIGINS = [
-            os.environ.get('FRONTEND_URL', 'http://localhost:3000')
-        ]
-        CORS_ALLOW_CREDENTIALS = True # If your frontend needs to send cookies
-        ```
-        It's often better to set `CORS_ALLOW_ALL_ORIGINS = False` in production and explicitly list origins.
+      - `settings.py` is configured to read `DJANGO_CORS_ALLOWED_ORIGINS` and `DJANGO_CSRF_TRUSTED_ORIGINS` from environment variables when `DEBUG` is `False`.
+      - On Railway, set these environment variables:
+        - `DJANGO_CORS_ALLOWED_ORIGINS`: Comma-separated list of your frontend's production URL(s) (e.g., `https://your-frontend.vercel.app`).
+        - `DJANGO_CSRF_TRUSTED_ORIGINS`: Comma-separated list of your frontend's production URL(s).
+      - `CORS_ALLOW_CREDENTIALS` is set to `True` in `settings.py`.
+      - Production cookie settings (`SESSION_COOKIE_SAMESITE`, `CSRF_COOKIE_SAMESITE`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`) are also configured in `settings.py` to be secure when `DEBUG` is `False` (assuming HTTPS).
 
 5.  **Railway Project Setup:**
 
