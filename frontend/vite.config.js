@@ -9,7 +9,7 @@ export default defineConfig({
     proxy: {
       // Proxy API requests to Django backend during development
       "/api": {
-        target: "http://127.0.0.1:8000", // Your Django backend address
+        target: "https://web-production-bf6e.up.railway.app", // Your Django backend address
         changeOrigin: true,
         // secure: false, // If your backend is not HTTPS
         // rewrite: (path) => path.replace(/^\/api/, '/api') // Ensure /api prefix is kept if needed by Django
